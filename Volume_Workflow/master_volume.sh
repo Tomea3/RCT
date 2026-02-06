@@ -1,10 +1,16 @@
 #!/bin/bash
-source /etc/profile.d/modules.sh
+# source /etc/profile.d/modules.sh # Apparently not found on some nodes or unnecessary if inherited
 
 # Handle arguments if provided (alternative to environment variables)
 # Usage: ./master_volume.sh [SOURCE_DATA] [DATADIR]
 if [ -n "$1" ]; then export SOURCE_DATA=$1; fi
 if [ -n "$2" ]; then export DATADIR=$2; fi
+
+# ... (script continues)
+
+# Clean scratch directory fully (manual cleanup since clean_scratch might be missing)
+rm -rf $SCRATCHDIR/*
+exit 0
 
 # Define log file
 export LOG_FILE="$DATADIR/volume_processing.log"
@@ -60,5 +66,6 @@ rm *.laz 2> /dev/null
 source deliver_results.sh && log_message "deliver_results ok"
 
 # Clean scratch directory fully
-clean_scratch
+# clean_scratch # Command not found in some envs
+rm -rf "$SCRATCHDIR"/*
 exit 0

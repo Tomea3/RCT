@@ -56,6 +56,8 @@ for LAZ_FILE in *.laz; do
             },
             {
                 \"type\": \"writers.las\",
+                \"minor_version\": 2,
+                \"dataformat_id\": 1,
                 \"filename\": \"$LAZ_WITH_TIME\"
             }
         ]
