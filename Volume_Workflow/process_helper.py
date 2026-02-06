@@ -8,7 +8,7 @@ def generate_ground(filename="ground.txt"):
     # Range -1.0 to 1.0 (200 steps each side) implies 2m total width
     # 201 points * 201 points ~ 40k points
     with open(filename, "w") as f:
-        f.write("X,Y,Z\n")
+        # DO NOT write header, PDAL readers.text might try to parse it as data if not skipped
         for x in range(-100, 101):
             for y in range(-100, 101):
                 f.write(f"{x/100.0},{y/100.0},0.0\n")
@@ -48,11 +48,12 @@ def create_pipeline(laz_file, stats_file, output_file, ground_file="ground.txt")
                     "type": "readers.text",
                     "filename": ground_file,
                     "header": "X,Y,Z",
-                    "spatialreference": "EPSG:32633" # Dummy CRS, maybe not needed or stripped later
+                    "spatialreference": "EPSG:32633" # Dummy CRS
                 },
                 {
                     "type": "readers.las",
-                    "filename": laz_file
+                    "filename": laz_file,
+                    "spatialreference": "EPSG:32633" # Force same CRS to avoid merge conflict
                 },
                 {
                     "type": "filters.transformation",
