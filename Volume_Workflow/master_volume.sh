@@ -1,23 +1,24 @@
 #!/bin/bash
-# source /etc/profile.d/modules.sh # Apparently not found on some nodes or unnecessary if inherited
+# Enable debug mode to see what's happening in PBS logs
+set -x
 
-# Handle arguments if provided (alternative to environment variables)
-# Usage: ./master_volume.sh [SOURCE_DATA] [DATADIR]
+# Handle arguments
 if [ -n "$1" ]; then export SOURCE_DATA=$1; fi
 if [ -n "$2" ]; then export DATADIR=$2; fi
 
-# ... (script continues)
-
-# Clean scratch directory fully (manual cleanup since clean_scratch might be missing)
-rm -rf $SCRATCHDIR/*
-exit 0
+# Fallback check
+if [ -z "$DATADIR" ]; then
+    echo "ERROR: DATADIR is not set. Exiting."
+    exit 1
+fi
 
 # Define log file
 export LOG_FILE="$DATADIR/volume_processing.log"
 
 log_message() {
     local MESSAGE=$1
-    echo "$(date) $MESSAGE" >> $LOG_FILE
+    # Write to file AND stdout so we see it in PBS logs
+    echo "$(date) $MESSAGE" | tee -a "$LOG_FILE"
 }
 
 export -f log_message
