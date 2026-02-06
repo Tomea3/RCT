@@ -123,22 +123,26 @@ for LAZ_FILE in *.laz; do
     # Output of treeinfo is usually text.
     
     # 3. Calculate Volume using treeinfo
-    # Based on log usage: treeinfo forest.txt [options] - report tree information and save out to _info.txt
-    # We should run it on the mesh or the ply? Usually on the structure.
-    # The log said "loading tree file: ....ply" so it accepted the PLY.
-    # But it showed usage, possibly because we captured stdout and it prints usage to stdout?
-    # Or maybe it needs specific flags to output volume?
-    # "Output file fields per segment... volume: volume of segment"
-    # "Output file fields per tree... height..."
+    # Treeinfo likely expects a structure with defined volume (like a mesh or QSM).
+    # The point cloud (PLY_FILE) does NOT have radius/volume, hence the error "must declare ... radius".
+    # We should run treeinfo on the GENERATED MESH (MESH_FILE).
     
-    # We will try running it and redirecting output mostly to a file, and checking the generated _info.txt
-    
-    # Run treeinfo. It auto-generates a file with suffix _info.txt (according to usage)
-    singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img treeinfo "$PLY_FILE"
-    
-    # The output file should be BASENAME_info.txt or similar. Reference: "save out to _info.txt file"
-    # Usually it appends _info.txt to the input filename.
-    INFO_FILE="${PLY_FILE%.*}_info.txt"
+    if [ -f "$MESH_FILE" ]; then
+         echo "Running treeinfo on mesh: $MESH_FILE" >> $LOG_FILE
+         singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img treeinfo "$MESH_FILE"
+         
+         # Capture output
+         INFO_FILE="${MESH_FILE%.*}_info.txt"
+         if [ -f "$INFO_FILE" ]; then
+             echo "Info file generated: $INFO_FILE" >> $LOG_FILE
+             cat "$INFO_FILE" >> $LOG_FILE
+             cat "$INFO_FILE" >> "${BASENAME}_info.txt" 
+         else
+             echo "Warning: No info file generated from $MESH_FILE" >> $LOG_FILE
+         fi
+    else
+         echo "Error: Mesh file $MESH_FILE not found (raywrap failed?)" >> $LOG_FILE
+    fi
     
     if [ -f "$INFO_FILE" ]; then
         echo "Info file generated: $INFO_FILE" >> $LOG_FILE
