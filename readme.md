@@ -19,14 +19,7 @@ export ADD_TIME=${5:-true}
 
 
 ```
-qsub -l select=1:ncpus=16:mem=64gb:scratch_local=125gb -l walltime=12:00:00 -- /storage/projects2/InterCOST/segment.sh rz_01.laz /storage/plzen1/home/krucek/data/rz_voxelized false 0.02 true
-qsub -l select=1:ncpus=16:mem=64gb:scratch_local=125gb -l walltime=12:00:00 -- /storage/projects2/InterCOST/segment.sh rz_03.laz /storage/plzen1/home/krucek/data/rz_voxelized false 0.02 true
-qsub -l select=1:ncpus=16:mem=64gb:scratch_local=125gb -l walltime=12:00:00 -- /storage/projects2/InterCOST/segment.sh rz_04.laz /storage/plzen1/home/krucek/data/rz_voxelized false 0.02 true
-qsub -l select=1:ncpus=16:mem=64gb:scratch_local=125gb -l walltime=12:00:00 -- /storage/projects2/InterCOST/segment.sh rz_05.laz /storage/plzen1/home/krucek/data/rz_voxelized false 0.02 true
-qsub -l select=1:ncpus=16:mem=64gb:scratch_local=125gb -l walltime=12:00:00 -- /storage/projects2/InterCOST/segment.sh rz_06.laz /storage/plzen1/home/krucek/data/rz_voxelized false 0.02 true
-qsub -l select=1:ncpus=16:mem=64gb:scratch_local=125gb -l walltime=12:00:00 -- /storage/projects2/InterCOST/segment.sh rz_07.laz /storage/plzen1/home/krucek/data/rz_voxelized false 0.02 true
-qsub -l select=1:ncpus=16:mem=64gb:scratch_local=125gb -l walltime=12:00:00 -- /storage/projects2/InterCOST/segment.sh rz_08.laz /storage/plzen1/home/krucek/data/rz_voxelized false 0.02 true
-qsub -l select=1:ncpus=16:mem=64gb:scratch_local=125gb -l walltime=12:00:00 -- /storage/projects2/InterCOST/segment.sh rz_02.laz /storage/plzen1/home/krucek/data/rz_voxelized false 0.02 true
+qsub -l select=1:ncpus=1:mem=200gb:scratch_local=500gb -l walltime=24:00:00 -- /storage/brno2/home/tomea/RCT/segment.sh Lanzhot_02_subsampled_cut_heart.laz /storage/brno2/home/tomea/RCT/DATA_LAZ false 0.02 false
 ```
 
 ```
