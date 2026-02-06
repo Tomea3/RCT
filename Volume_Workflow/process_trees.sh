@@ -87,6 +87,11 @@ for LAZ_FILE in *.laz; do
         singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$INPUT_LAZ" ray 0,0,100 --remove_start_pos
     fi
     
+    # Update PLY_FILE variable because rayimport outputs [filename].ply
+    # Input was $INPUT_LAZ (e.g. file_time.laz) -> Output is file_time.ply
+    PLY_FILE="${INPUT_LAZ%.*}.ply"
+    MESH_FILE="${PLY_FILE%.*}_mesh.ply" # Update mesh filename too to keep consistent
+    
     # 2. RayWrap (Create Mesh/Surface)
     # "inwards 1.0" is standard for trees. 
     # Adjusted alpha might be needed depending on point density.
