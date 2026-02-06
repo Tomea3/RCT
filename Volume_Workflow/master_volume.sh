@@ -40,6 +40,7 @@ git clone https://github.com/Tomea3/RCT || { echo "Error parsing git clone" >> $
 
 # Copy scripts from the Volume_Workflow subdir to scratch root
 cp RCT/Volume_Workflow/*.sh . || { echo "Error copying workflow scripts from repo" >> $LOG_FILE; exit 1; }
+cp RCT/Volume_Workflow/process_helper.py . || { echo "Error copying helper script" >> $LOG_FILE; exit 1; }
 cp RCT/sys_monitor.sh . 2>/dev/null # Attempt to copy sys_monitor if in root
 
 log_message "Scripts fetched from GitHub"

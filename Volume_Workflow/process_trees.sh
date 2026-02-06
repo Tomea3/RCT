@@ -1,8 +1,128 @@
 #!/bin/bash
 
 # Default Trajectory (dummy) if not provided
-# If TRAJECTORY variable is set (from qsub arguments), use it.
-# Otherwise, we will use a dummy origin (0,0,1000) for all trees or specific logic.
+# RCT requires GpsTime, so we add it via PDAL.
+# We center the tree at 0,0,0 and add a fake ground plane (2x2m).
+# Simulated scanner position: 2,2,2.
+
+echo "$(date) Starting tree processing (Fake Ground Workflow)..." >> $LOG_FILE
+
+# Output file for volumes
+VOLUME_REPORT="volume_report.csv"
+echo "Filename,Volume,SurfaceArea" > $VOLUME_REPORT
+
+# 1. Prepare Ground (once)
+# Assuming process_helper.py is in the current directory (copied by master_volume or setup_scratch)
+if [ ! -f "process_helper.py" ]; then
+    echo "Error: process_helper.py not found!" >> $LOG_FILE
+    exit 1
+fi
+
+echo "Generating fake ground..." >> $LOG_FILE
+python3 process_helper.py ground
+if [ ! -f "ground.txt" ]; then
+    echo "Error: Failed to generate ground.txt" >> $LOG_FILE
+    exit 1
+fi
+
+# Iterate over all LAZ files in the directory
+for LAZ_FILE in *.laz; do
+    [ -e "$LAZ_FILE" ] || continue
+    
+    # Skip merged files if restart
+    if [[ "$LAZ_FILE" == *"_merged.laz"* ]]; then continue; fi
+    
+    BASENAME=$(basename "$LAZ_FILE" .laz)
+    echo "Processing $LAZ_FILE..." >> $LOG_FILE
+    
+    # 2. PDAL Stats & Center
+    # Get stats to calculate offset
+    singularity exec -B $SCRATCHDIR/:/data ./pdal.img pdal info --stats "$LAZ_FILE" > stats.json
+    
+    # create pipeline
+    MERGED_LAZ="${BASENAME}_merged.laz"
+    python3 process_helper.py pipeline "$LAZ_FILE" stats.json "$MERGED_LAZ"
+    
+    # Run PDAL pipeline (Merge + Center + Time)
+    singularity exec -B $SCRATCHDIR/:/data ./pdal.img pdal pipeline merge_pipeline.json
+    
+    if [ ! -f "$MERGED_LAZ" ]; then
+        echo "Error: Failed to create $MERGED_LAZ" >> $LOG_FILE
+        continue
+    fi
+    
+    # 3. RCT Full Pipeline
+    
+    # A. Import
+    # Scanner at 2,2,2
+    echo "Importing..." >> $LOG_FILE
+    singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$MERGED_LAZ" ray 2,2,2 --max_intensity 0
+    
+    IMPORTED_PLY="${MERGED_LAZ%.*}.ply" # rayimport output
+    TERRAIN_PLY="${BASENAME}_terrain.ply"
+    SEGMENTED_PLY="${BASENAME}_segmented.ply"
+    
+    # B. Extract Terrain (define ground)
+    echo "Extracting terrain..." >> $LOG_FILE
+    singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayextract terrain "$IMPORTED_PLY" "$TERRAIN_PLY"
+    
+    # C. Extract Trees (segmentation)
+    # We need dummy files for trunks/forest output, even if we don't use them (check required args)
+    # rayextract trees input_cloud input_terrain output_trunks output_forest output_segmented output_trees_txt
+    TRUNKS_TXT="${BASENAME}_trunks.txt"
+    FOREST_TXT="${BASENAME}_forest.txt"
+    TREES_INFO="${BASENAME}_trees.txt"
+    
+    echo "Extracting trees..." >> $LOG_FILE
+    singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayextract trees "$IMPORTED_PLY" "$TERRAIN_PLY" "$TRUNKS_TXT" "$FOREST_TXT" "$SEGMENTED_PLY" "$TREES_INFO"
+    
+    # D. Segmentation / Export
+    # Now we have SEGMENTED_PLY with TreeIDs. We need to split it (export).
+    # Create dir for segments
+    SEG_DIR="${BASENAME}_segments"
+    mkdir -p "$SEG_DIR"
+    
+    echo "Exporting segments..." >> $LOG_FILE
+    singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayexport "$SEGMENTED_PLY" "$SEG_DIR/tree"
+    
+    # E. Process Segments (Wrap & Volume)
+    # Loop over exported files
+    # shopt -s nullglob
+    for SEG_PLY in "$SEG_DIR"/*.ply; do
+        SEG_NAME=$(basename "$SEG_PLY" .ply)
+        MESH_FILE="${SEG_PLY%.*}_mesh.ply"
+        
+        echo "Wrapping $SEG_NAME..." >> $LOG_FILE
+        # Use alpha 0.2 (robust)
+        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img raywrap "$SEG_PLY" alpha 0.2
+        
+        # Fallback
+        if [ ! -f "$MESH_FILE" ]; then
+             singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img raywrap "$SEG_PLY" convexhull
+        fi
+        
+        # TreeInfo / Volume
+        if [ -f "$MESH_FILE" ]; then
+             echo "Info for $SEG_NAME..." >> $LOG_FILE
+             singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img treeinfo "$MESH_FILE"
+             
+             # Check output info file
+             INFO_TXT="${MESH_FILE%.*}_info.txt"
+             if [ -f "$INFO_TXT" ]; then
+                 # Append to main log
+                 cat "$INFO_TXT" >> $LOG_FILE
+                 # Create a copy with nice name in root
+                 cp "$INFO_TXT" "${BASENAME}_${SEG_NAME}_info.txt"
+             fi
+             
+             # Also copy mesh to root for delivery
+             cp "$MESH_FILE" "${BASENAME}_${SEG_NAME}_mesh.ply"
+        fi
+    done
+    
+done
+
+echo "$(date) Processing finished." >> $LOG_FILE
 
 # Check if we have a global trajectory file
 GLOBAL_TRAJ=""
