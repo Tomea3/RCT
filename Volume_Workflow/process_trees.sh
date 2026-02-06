@@ -78,13 +78,13 @@ for LAZ_FILE in *.laz; do
 
     if [ -f "$LOCAL_TRAJ" ]; then
         # Use local trajectory file
-        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$INPUT_LAZ" "$LOCAL_TRAJ"
+        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$INPUT_LAZ" "$LOCAL_TRAJ" --max_intensity 0
     elif [ -n "$GLOBAL_TRAJ" ] && [ -f "$GLOBAL_TRAJ" ]; then
         # Use global trajectory
-        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$INPUT_LAZ" "$GLOBAL_TRAJ"
+        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$INPUT_LAZ" "$GLOBAL_TRAJ" --max_intensity 0
     else
         # Use Dummy Origin
-        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$INPUT_LAZ" ray 0,0,100 --remove_start_pos
+        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$INPUT_LAZ" ray 0,0,100 --remove_start_pos --max_intensity 0
     fi
     
     # Update PLY_FILE variable because rayimport outputs [filename].ply
@@ -93,12 +93,22 @@ for LAZ_FILE in *.laz; do
     MESH_FILE="${PLY_FILE%.*}_mesh.ply" # Update mesh filename too to keep consistent
     
     # 2. RayWrap (Create Mesh/Surface)
-    # "inwards 1.0" is standard for trees. 
-    # Adjusted alpha might be needed depending on point density.
-    singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img raywrap "$PLY_FILE" inwards 1.0
+    # "inwards" method caused Segmentation Fault, possibly due to density or data issue.
+    # We will switch to "alpha" wrapping or "convexhull" which is more robust.
+    # Trying alpha with a conservative value.
+    
+    echo "Running raywrap alpha 0.2..." >> $LOG_FILE
+    singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img raywrap "$PLY_FILE" alpha 0.2
     
     # Check if mesh was created
     if [ ! -f "$MESH_FILE" ]; then
+        echo "Raywrap alpha failed or crashed. Trying convext hull as fallback..." >> $LOG_FILE
+        # Fallback to convex hull (simplest volume) or try larger alpha
+        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img raywrap "$PLY_FILE" convexhull
+    fi
+     
+    # Ensure correct filename if fallback created something else (usually raywrap overwrites output name)
+    # Check if mesh was created (standard output)
         # sometimes raytools naming varies, check for output
         # raywrap input.ply -> input_mesh.ply usually? 
         # Actually raywrap updates the file or creates a new one?
