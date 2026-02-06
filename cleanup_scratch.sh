@@ -1,5 +1,5 @@
 # remove 
-rm -rf bluecat-codekit
+rm -rf RCT
 rm -rf $SOURCE_DATA
 rm -rf cloud.laz
 rm -rf raycloudtools.img
