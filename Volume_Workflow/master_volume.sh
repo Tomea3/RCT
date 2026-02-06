@@ -20,19 +20,21 @@ log_message "$(date) Volume processing job started"
 log_message "$PBS_JOBID is running on node `hostname -f`"
 test -n "$SCRATCHDIR" && log_message "scratch dir: $SCRATCHDIR"
 
-# Determine script directory to find dependency scripts
-SCRIPT_DIR=$( dirname "$0" )
-
-# Copy dependency scripts to SCRATCHDIR before moving there
-cp "$SCRIPT_DIR/setup_scratch.sh" "$SCRATCHDIR/" || { echo "Error copying setup_scratch.sh" >> $LOG_FILE; exit 1; }
-cp "$SCRIPT_DIR/process_trees.sh" "$SCRATCHDIR/" || { echo "Error copying process_trees.sh" >> $LOG_FILE; exit 1; }
-cp "$SCRIPT_DIR/deliver_results.sh" "$SCRATCHDIR/" || { echo "Error copying deliver_results.sh" >> $LOG_FILE; exit 1; }
-
-# Try to copy sys_monitor if it exists (check parent dir too)
-cp "$SCRIPT_DIR/sys_monitor.sh" "$SCRATCHDIR/" 2>/dev/null || cp "$SCRIPT_DIR/../sys_monitor.sh" "$SCRATCHDIR/" 2>/dev/null
+# Determine script directory (not needed if fetching from git, but kept for reference)
+# SCRIPT_DIR=$( dirname "$0" )
 
 # Move into scratch directory
 cd $SCRATCHDIR && log_message "move to SCRATCHDIR ok"
+
+# Load git and clone repository
+module add git/ && log_message "git loaded" || log_message "git not loaded"
+git clone https://github.com/Tomea3/RCT || { echo "Error parsing git clone" >> $LOG_FILE; exit 1; }
+
+# Copy scripts from the Volume_Workflow subdir to scratch root
+cp RCT/Volume_Workflow/*.sh . || { echo "Error copying workflow scripts from repo" >> $LOG_FILE; exit 1; }
+cp RCT/sys_monitor.sh . 2>/dev/null # Attempt to copy sys_monitor if in root
+
+log_message "Scripts fetched from GitHub"
 
 # Monitor system usage (optional, if sys_monitor exists)
 if [ -f "sys_monitor.sh" ]; then
