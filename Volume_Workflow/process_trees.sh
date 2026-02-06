@@ -89,6 +89,9 @@ for LAZ_FILE in *.laz; do
     echo "Running raywrap alpha 0.2..." >> $LOG_FILE
     singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img raywrap "$PLY_FILE" alpha 0.2
     
+    # Debug: List files to see what raywrap created
+    ls -la >> $LOG_FILE
+    
     # Fallback to convexhull if alpha failed
     if [ ! -f "$MESH_FILE" ]; then
         echo "Raywrap alpha failed. Trying convexhull..." >> $LOG_FILE

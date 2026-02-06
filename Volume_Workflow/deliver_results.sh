@@ -7,7 +7,7 @@ log_message "deliver results start"
 ZIP_NAME="Volume_Results_${PBS_JOBID}.zip"
 
 # Zip all .csv reports, .txt info, and _mesh.ply files
-zip -r "$ZIP_NAME" *.csv *.txt *_mesh.ply volume_processing.log
+zip -r "$ZIP_NAME" volume_report.csv *.txt *.ply "$LOG_FILE" volume_processing.log
 
 echo "$(date) compressed" >> $LOG_FILE
 
