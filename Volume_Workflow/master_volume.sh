@@ -1,4 +1,5 @@
 #!/bin/bash
+source /etc/profile.d/modules.sh
 
 # Handle arguments if provided (alternative to environment variables)
 # Usage: ./master_volume.sh [SOURCE_DATA] [DATADIR]

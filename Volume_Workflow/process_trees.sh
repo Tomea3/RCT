@@ -35,17 +35,54 @@ for LAZ_FILE in *.laz; do
     # Try to find specific trajectory: name.txt or name_traj.txt
     LOCAL_TRAJ="${BASENAME}.txt"
     
+    # Preprocess with PDAL to add GpsTime if missing (required by rayimport)
+    # create a temporary file with time added
+    LAZ_WITH_TIME="${BASENAME}_time.laz"
+    
+    # We use a simple PDAL pipeline to add GpsTime (copying X or just valid dimension)
+    # Using ferrying X=>GpsTime to ensure the dimension exists and is populated
+    echo "Adding timestamps to $LAZ_FILE..." >> $LOG_FILE
+    
+    # Create simple pipeline json
+    echo "{
+        \"pipeline\": [
+            {
+                \"type\": \"readers.las\",
+                \"filename\": \"$LAZ_FILE\"
+            },
+            {
+                \"type\": \"filters.ferry\",
+                \"dimensions\": \"X=>GpsTime\"
+            },
+            {
+                \"type\": \"writers.las\",
+                \"filename\": \"$LAZ_WITH_TIME\"
+            }
+        ]
+    }" > add_time_pipeline.json
+    
+    # Run PDAL
+    singularity exec -B $SCRATCHDIR/:/data ./pdal.img pdal pipeline add_time_pipeline.json
+    
+    # Use the new file for rayimport if successful
+    if [ -f "$LAZ_WITH_TIME" ]; then
+        INPUT_LAZ="$LAZ_WITH_TIME"
+    else
+        echo "Error: PDAL preprocessing failed for $LAZ_FILE" >> $LOG_FILE
+        INPUT_LAZ="$LAZ_FILE" # Fallback, likely to fail
+    fi
+
+    echo "Importing $INPUT_LAZ..." >> $LOG_FILE
+
     if [ -f "$LOCAL_TRAJ" ]; then
         # Use local trajectory file
-        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$LAZ_FILE" "$LOCAL_TRAJ"
+        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$INPUT_LAZ" "$LOCAL_TRAJ"
     elif [ -n "$GLOBAL_TRAJ" ] && [ -f "$GLOBAL_TRAJ" ]; then
         # Use global trajectory
-        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$LAZ_FILE" "$GLOBAL_TRAJ"
+        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$INPUT_LAZ" "$GLOBAL_TRAJ"
     else
-        # Use Dummy Origin (e.g. 0,0,-10 implies scanner at -10m height? Or 0,0,1000 for aerial?)
-        # User prompt context: "dummy trajektorie".
-        # We'll use ray 0,0,100 --remove_start_pos (assuming aerial/high view or just direction)
-        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$LAZ_FILE" ray 0,0,100 --remove_start_pos
+        # Use Dummy Origin
+        singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$INPUT_LAZ" ray 0,0,100 --remove_start_pos
     fi
     
     # 2. RayWrap (Create Mesh/Surface)
@@ -78,13 +115,32 @@ for LAZ_FILE in *.laz; do
     # Let's try treeinfo on the mesh file.
     # Output of treeinfo is usually text.
     
-    INFO_OUT=$(singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img treeinfo "$PLY_FILE")
-    # append to report
-    echo "$BASENAME :: $INFO_OUT" >> $LOG_FILE
+    # 3. Calculate Volume using treeinfo
+    # Based on log usage: treeinfo forest.txt [options] - report tree information and save out to _info.txt
+    # We should run it on the mesh or the ply? Usually on the structure.
+    # The log said "loading tree file: ....ply" so it accepted the PLY.
+    # But it showed usage, possibly because we captured stdout and it prints usage to stdout?
+    # Or maybe it needs specific flags to output volume?
+    # "Output file fields per segment... volume: volume of segment"
+    # "Output file fields per tree... height..."
     
-    # simple parsing (pseudo-code, depends on output format)
-    # We save the raw info for verification
-    echo "$INFO_OUT" > "${BASENAME}_info.txt"
+    # We will try running it and redirecting output mostly to a file, and checking the generated _info.txt
+    
+    # Run treeinfo. It auto-generates a file with suffix _info.txt (according to usage)
+    singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img treeinfo "$PLY_FILE"
+    
+    # The output file should be BASENAME_info.txt or similar. Reference: "save out to _info.txt file"
+    # Usually it appends _info.txt to the input filename.
+    INFO_FILE="${PLY_FILE%.*}_info.txt"
+    
+    if [ -f "$INFO_FILE" ]; then
+        echo "Info file generated: $INFO_FILE" >> $LOG_FILE
+        cat "$INFO_FILE" >> $LOG_FILE
+        cat "$INFO_FILE" >> "${BASENAME}_info.txt" 
+    else
+        echo "Warning: No info file generated for $BASENAME" >> $LOG_FILE
+        # Try capturing stdout again just in case, but maybe it failed silently or usage was printed because something was wrong
+    fi
     
 done
 
