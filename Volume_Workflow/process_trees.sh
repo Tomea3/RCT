@@ -40,10 +40,8 @@ for LAZ_FILE in *.laz; do
     LAZ_WITH_TIME="${BASENAME}_time.laz"
     
     # We use a simple PDAL pipeline to add GpsTime (copying X or just valid dimension)
-    # Using ferrying X=>GpsTime to ensure the dimension exists and is populated
     echo "Adding timestamps to $LAZ_FILE..." >> $LOG_FILE
     
-    # Create simple pipeline json
     echo "{
         \"pipeline\": [
             {
@@ -63,85 +61,46 @@ for LAZ_FILE in *.laz; do
         ]
     }" > add_time_pipeline.json
     
-    # Run PDAL
     singularity exec -B $SCRATCHDIR/:/data ./pdal.img pdal pipeline add_time_pipeline.json
     
-    # Use the new file for rayimport if successful
     if [ -f "$LAZ_WITH_TIME" ]; then
         INPUT_LAZ="$LAZ_WITH_TIME"
     else
         echo "Error: PDAL preprocessing failed for $LAZ_FILE" >> $LOG_FILE
-        INPUT_LAZ="$LAZ_FILE" # Fallback, likely to fail
+        INPUT_LAZ="$LAZ_FILE"
     fi
 
     echo "Importing $INPUT_LAZ..." >> $LOG_FILE
 
+    # RayImport with --max_intensity 0 to suppress warnings about missing intensity
     if [ -f "$LOCAL_TRAJ" ]; then
-        # Use local trajectory file
         singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$INPUT_LAZ" "$LOCAL_TRAJ" --max_intensity 0
     elif [ -n "$GLOBAL_TRAJ" ] && [ -f "$GLOBAL_TRAJ" ]; then
-        # Use global trajectory
         singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$INPUT_LAZ" "$GLOBAL_TRAJ" --max_intensity 0
     else
-        # Use Dummy Origin
         singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img rayimport "$INPUT_LAZ" ray 0,0,100 --remove_start_pos --max_intensity 0
     fi
     
-    # Update PLY_FILE variable because rayimport outputs [filename].ply
-    # Input was $INPUT_LAZ (e.g. file_time.laz) -> Output is file_time.ply
+    # Update filenames logic
     PLY_FILE="${INPUT_LAZ%.*}.ply"
-    MESH_FILE="${PLY_FILE%.*}_mesh.ply" # Update mesh filename too to keep consistent
+    MESH_FILE="${PLY_FILE%.*}_mesh.ply"
     
-    # 2. RayWrap (Create Mesh/Surface)
-    # "inwards" method caused Segmentation Fault, possibly due to density or data issue.
-    # We will switch to "alpha" wrapping or "convexhull" which is more robust.
-    # Trying alpha with a conservative value.
-    
+    # RayWrap: Try alpha 0.2 first (stable for most trees)
     echo "Running raywrap alpha 0.2..." >> $LOG_FILE
     singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img raywrap "$PLY_FILE" alpha 0.2
     
-    # Check if mesh was created
+    # Fallback to convexhull if alpha failed
     if [ ! -f "$MESH_FILE" ]; then
-        echo "Raywrap alpha failed or crashed. Trying convext hull as fallback..." >> $LOG_FILE
-        # Fallback to convex hull (simplest volume) or try larger alpha
+        echo "Raywrap alpha failed. Trying convexhull..." >> $LOG_FILE
         singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img raywrap "$PLY_FILE" convexhull
     fi
-     
-    # Ensure correct filename if fallback created something else (usually raywrap overwrites output name)
-    # Check if mesh was created (standard output)
-        # sometimes raytools naming varies, check for output
-        # raywrap input.ply -> input_mesh.ply usually? 
-        # Actually raywrap updates the file or creates a new one?
-        # Based on process_data.sh: "raywrap segment.ply inwards 1.0"
-        # It usually modifies or creates a "_mesh" variants.
-        # Let's assume it creates standard output or we check timestamps.
-        # Wait, process_data.sh doesn't rename it.
-        # But previous step `rayexport` created .laz. 
-        # `raywrap` usually writes the mesh to the ply itself or a sidecar?
-        # Actually `raywrap` creates a surface mesh.
-        # We need to verify output. standard behavior: input.ply -> input_mesh.ply
-        TRUE_MESH_FILE="${BASENAME}_mesh.ply" # Hypothetical
-        # Let's check if it exists, if not, maybe it overwrote?
-        # For safety, we check listing or assume it worked.
-        :
-    fi
     
-    # 3. Calculate Volume
-    # Does RCT have a tool? 
-    # `treeinfo` might work on the mesh if it's treated as a tree.
-    # Let's try treeinfo on the mesh file.
-    # Output of treeinfo is usually text.
-    
-    # 3. Calculate Volume using treeinfo
-    # Treeinfo likely expects a structure with defined volume (like a mesh or QSM).
-    # The point cloud (PLY_FILE) does NOT have radius/volume, hence the error "must declare ... radius".
-    # We should run treeinfo on the GENERATED MESH (MESH_FILE).
-    
+    # TreeInfo (Volume Calculation) on Mesh
     if [ -f "$MESH_FILE" ]; then
          echo "Running treeinfo on mesh: $MESH_FILE" >> $LOG_FILE
          singularity exec -B $SCRATCHDIR/:/data ./raycloudtools.img treeinfo "$MESH_FILE"
          
-         # Capture output
+         # Capture output (auto-generated _info.txt)
          INFO_FILE="${MESH_FILE%.*}_info.txt"
          if [ -f "$INFO_FILE" ]; then
              echo "Info file generated: $INFO_FILE" >> $LOG_FILE
@@ -152,15 +111,6 @@ for LAZ_FILE in *.laz; do
          fi
     else
          echo "Error: Mesh file $MESH_FILE not found (raywrap failed?)" >> $LOG_FILE
-    fi
-    
-    if [ -f "$INFO_FILE" ]; then
-        echo "Info file generated: $INFO_FILE" >> $LOG_FILE
-        cat "$INFO_FILE" >> $LOG_FILE
-        cat "$INFO_FILE" >> "${BASENAME}_info.txt" 
-    else
-        echo "Warning: No info file generated for $BASENAME" >> $LOG_FILE
-        # Try capturing stdout again just in case, but maybe it failed silently or usage was printed because something was wrong
     fi
     
 done
