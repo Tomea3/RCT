@@ -1,0 +1,2 @@
+# Tree file. Optional per-tree attributes (e.g. 'height,crown_radius, ') followed by 'x,y,z,radius' and any additional per-segment attributes:
+x,y,z,radius,parent_id,section_id

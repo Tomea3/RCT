@@ -1,0 +1,114 @@
+# RayExtract Volume Workflow - Kompletní postup
+# ==============================================
+# Tento soubor popisuje krok za krokem jak získat objem stromu
+# z TLS point cloud dat pomocí RayCloudTools.
+
+# ==============================================================================
+# ČÁST 1: PŘÍPRAVA DAT (Windows - CloudCompare)
+# ==============================================================================
+
+# 1. Načíst point cloud stromu (LAZ/PLY)
+#    File > Open > vybrat soubor
+
+# 2. Vytvořit umělou zem (pokud chybí)
+#    Edit > Primitive Factory > Plane
+#    - Velikost: pokrýt XY extent stromu + buffer (např. 20x20m)
+#    - Z pozice: na úrovni báze stromu (Z=0 nebo min Z stromu)
+
+# 3. Sloučit strom a zem
+#    Vybrat obě entity > Edit > Merge
+
+# 4. Spočítat normály
+#    Select cloud > Edit > Normals > Compute
+#    - Model: Quadric nebo Plane
+#    - Orientation: Prefer sensor position
+#    - Sensor position: 5, 5, 2 (pozice skeneru vedle stromu)
+
+# 5. Export jako binární PLY
+#    File > Save As > PLY - Binary
+#    Ujistit se že jsou zahrnuty: X, Y, Z, Nx, Ny, Nz
+
+# ==============================================================================
+# ČÁST 2: ZPRACOVÁNÍ (Metacentrum - interaktivní job)
+# ==============================================================================
+
+# Spustit interaktivní job
+qsub -I -l select=1:ncpus=4:mem=8gb:scratch_local=10gb -l walltime=2:00:00
+
+# Přejít do scratch
+cd $SCRATCHDIR
+
+# Zkopírovat data a image
+cp /storage/brno2/home/tomea/RCT/img/raycloudtools.img .
+cp /cesta/k/DN13_FASY_77_LON.ply .
+
+# ==============================================================================
+# KROK 1: RayImport
+# ==============================================================================
+# Konvertuje PLY na raycloud formát s informací o směru paprsků
+# ray 5,5,2 = pozice skeneru (x,y,z)
+
+singularity exec -B $PWD:$PWD raycloudtools.img rayimport DN13_FASY_77_LON.ply ray 5,5,2
+
+# Výstup: DN13_FASY_77_LON_raycloud.ply
+
+# ==============================================================================
+# KROK 2: RayExtract Terrain
+# ==============================================================================
+# Extrahuje povrch země jako mesh
+
+singularity exec -B $PWD:$PWD raycloudtools.img rayextract terrain DN13_FASY_77_LON_raycloud.ply
+
+# Výstup: DN13_FASY_77_LON_raycloud_mesh.ply (terrain mesh)
+
+# ==============================================================================
+# KROK 3: RayExtract Trees
+# ==============================================================================
+# Extrahuje strukturu stromu (QSM) a počítá objem
+
+singularity exec -B $PWD:$PWD raycloudtools.img rayextract trees \
+  DN13_FASY_77_LON_raycloud.ply \
+  DN13_FASY_77_LON_raycloud_mesh.ply \
+  --height_min 1.0 \
+  --distance_limit 0.5 \
+  --gravity_factor 0.5
+
+# Parametry:
+#   --height_min 1.0      = minimální výška stromu (m)
+#   --distance_limit 0.5  = max vzdálenost mezi sousedními body stromu (m)
+#   --gravity_factor 0.5  = preference vertikálních stromů (0-1)
+#   --crop_length 0.01    = ořez malých větví (m)
+#   --global_taper 0      = odhad taper z dat (0 = automaticky)
+#   --max_diameter 0.9    = max průměr kmene (m)
+
+# Výstupy:
+#   DN13_FASY_77_LON_raycloud_trees.txt      = struktura stromu (x,y,z,radius)
+#   DN13_FASY_77_LON_raycloud_segmented.ply  = segmentované mračno (barevně)
+#   DN13_FASY_77_LON_raycloud_trunks.txt     = informace o kmenech
+
+# ==============================================================================
+# KROK 4: Zobrazit výsledky
+# ==============================================================================
+
+cat DN13_FASY_77_LON_raycloud_trees.txt
+
+# Formát trees.txt:
+# x,y,z,radius,parent_id,section_id
+# Každý řádek = jeden segment stromu
+# Objem = suma objemů válců (π * r² * délka segmentu)
+
+# ==============================================================================
+# ALTERNATIVA: Přímý výpočet objemu pomocí raywrap
+# ==============================================================================
+# Pokud rayextract trees nefunguje, lze použít raywrap:
+
+singularity exec -B $PWD:$PWD raycloudtools.img raywrap DN13_FASY_77_LON_raycloud.ply upwards 0.5
+
+# Vytvoří mesh obal koruny, ne přesný dřevnatý objem
+
+# ==============================================================================
+# REFERENCE
+# ==============================================================================
+# RayCloudTools: https://github.com/csiro-robotics/raycloudtools
+# TreeTools: https://github.com/csiro-robotics/treetools
+# Článek: RayExtract (Remote Sensing of Environment 2025)

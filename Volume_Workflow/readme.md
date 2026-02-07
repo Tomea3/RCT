@@ -1,29 +1,61 @@
-# RCT Volume Workflow
+# RayExtract Volume Workflow
 
-Tento adresář obsahuje skripty pro dodatečný výpočet objemu (Volume) z již segmentovaných a vyčištěných stromů (LAZ soubory).
+Batch výpočet objemu stromů z TLS point cloud dat pomocí RayCloudTools.
 
 ## Požadavky
 
-*   Vstupní data: Adresář obsahující `.laz` soubory jednotlivých stromů (např. `vycistene_stromy/tree_1.laz`, `tree_2.laz`...).
-*   (Volitelné) Trajektorie: Pokud máte soubory trajektorie, pojmenujte je stejně jako laz (např. `tree_1.txt`) a nahrajte je do stejné složky, skript je automaticky najde.
+### Windows
+```bash
+pip install laspy numpy open3d
+```
+
+### Metacentrum
+- Singularity image: `raycloudtools.img`
 
 ## Použití
 
-Spusťte úlohu pomocí `qsub` (podobně jako původní skript), ale jako `SOURCE_DATA` uveďte název složky s vašimi stromy.
+### 1. Příprava dat (Windows)
 
-Příklad:
 ```bash
-# Nastavení proměnných
-export DATADIR=/storage/plzen1/home/vas_user/data_projekt
-export SOURCE_DATA=vycistene_stromy  # Jméno složky v DATADIR
-
-# Spuštění
-qsub -l select=1:ncpus=4:mem=16gb:scratch_local=20gb -l walltime=04:00:00 -v DATADIR,SOURCE_DATA -- /cesta/k/Volume_Workflow/master_volume.sh
+python prepare_trees.py input_laz_folder output_ply_folder [--plane plane.laz]
 ```
 
-## Výstup
+- Načte LAZ soubory stromů
+- Přidá umělou zem (nebo použije plane.laz)
+- Spočítá normály směrem ke skeneru
+- Uloží jako binární PLY
 
-Výsledkem bude ZIP soubor `Volume_Results_....zip` v `DATADIR`, který obsahuje:
-1.  `volume_report.csv` - Souhrnná tabulka (pokud se podaří extrahovat čísla).
-2.  `*_info.txt` - Detailní výstupy z `treeinfo` pro každý strom.
-3.  `*_mesh.ply` - Vymodelované meshe (povrchy) stromů (pro vizualizaci).
+### 2. Zpracování (Metacentrum)
+
+```bash
+# Zkopírovat PLY soubory na storage
+scp output_ply_folder/*.ply tomea@skirit.metacentrum.cz:/storage/brno2/home/tomea/trees/
+
+# Interaktivní job
+qsub -I -l select=1:ncpus=4:mem=8gb:scratch_local=20gb -l walltime=4:00:00
+
+cd $SCRATCHDIR
+cp /storage/brno2/home/tomea/trees/*.ply input/
+cp /storage/brno2/home/tomea/RCT/img/raycloudtools.img .
+cp /storage/brno2/home/tomea/RCT/Volume_Workflow/process_volumes.py .
+
+python3 process_volumes.py input/ results/
+```
+
+### 3. Výstup
+
+- `volume_results.json` - detailní výsledky
+- `volume_results.csv` - tabulka pro Excel
+
+## Soubory
+
+| Soubor | Popis |
+|--------|-------|
+| `prepare_trees.py` | Windows: příprava LAZ → PLY |
+| `process_volumes.py` | Metacentrum: batch výpočet objemu |
+| `rayextract_workflow.txt` | Manuální postup krok za krokem |
+
+## Reference
+
+- [RayCloudTools](https://github.com/csiro-robotics/raycloudtools)
+- [TreeTools](https://github.com/csiro-robotics/treetools)
