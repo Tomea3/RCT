@@ -240,54 +240,25 @@ def process_tree(ply_path, output_dir, image_path):
             "--gravity_factor", "0.5"
         ], str(output_dir.absolute()), bind_dirs)
     
-    # Krok 4: Spočítat objem
-    print("  Step 4: Calculate Volume...")
+    # Krok 4: Zkontrolovat výstupy
+    print("  Step 4: Check outputs...")
     
-    # Zkusit trees mesh
+    # Zkontrolovat mesh výstupy
     if tree_mesh.exists():
-        volume, area = calculate_mesh_volume(tree_mesh)
-        if volume:
-            results["volume_m3"] = round(volume, 4)
-            results["surface_area_m2"] = round(area, 4) if area else None
-            results["method"] = "rayextract_trees_mesh"
-            results["success"] = True
-            print(f"    Volume: {results['volume_m3']:.4f} m³")
+        size_kb = tree_mesh.stat().st_size / 1024
+        results["method"] = "rayextract_trees_mesh"
+        results["success"] = True
+        print(f"    ✓ Tree mesh: {tree_mesh.name} ({size_kb:.1f} KB)")
     
-    # Fallback: raywrap
-    if not results["success"]:
-        print("    Trying raywrap fallback...")
-        run_singularity(image_path, [
-            "raywrap", str(raycloud_ply.absolute()), "inwards", "0.5"
-        ], str(output_dir.absolute()), bind_dirs)
-        
-        wrap_mesh = output_dir / f"{basename}_raycloud_mesh.ply"
-        if wrap_mesh.exists():
-            volume, area = calculate_mesh_volume(wrap_mesh)
-            if volume:
-                results["volume_m3"] = round(volume, 4)
-                results["surface_area_m2"] = round(area, 4) if area else None
-                results["method"] = "raywrap_inwards"
-                results["success"] = True
-                print(f"    Volume (raywrap): {results['volume_m3']:.4f} m³")
-    
-    # Parsovat trees.txt pro výšku
     if trees_txt.exists():
-        try:
-            with open(trees_txt, 'r') as f:
-                content = f.read()
-                lines = [l for l in content.split('\n') if l and not l.startswith('#') and not l.startswith('x,')]
-                if lines:
-                    # Najít max Z
-                    max_z = 0
-                    for line in lines:
-                        parts = line.split(',')
-                        if len(parts) >= 3:
-                            z = float(parts[2])
-                            if z > max_z:
-                                max_z = z
-                    results["height_m"] = round(max_z, 2)
-        except:
-            pass
+        with open(trees_txt, 'r') as f:
+            lines = [l for l in f.read().split('\n') if l and not l.startswith('#') and not l.startswith('x,')]
+        if lines:
+            results["success"] = True
+            print(f"    ✓ Trees.txt: {len(lines)} segments")
+    
+    if not results["success"]:
+        print("    ✗ No mesh created")
     
     return results
 
@@ -303,14 +274,20 @@ def main():
     output_dir = Path(args.output_folder)
     image_path = args.image
     
-    # Ověřit image
+    # Cesta k images ve storage
+    STORAGE_IMG_PATH = "/storage/brno2/home/tomea/RCT/img"
+    
+    # Ověřit a zkopírovat image
     if not os.path.exists(image_path):
-        # Zkusit v storage
-        alt_path = f"/storage/brno2/home/{os.environ.get('USER', 'tomea')}/RCT/img/{image_path}"
-        if os.path.exists(alt_path):
-            image_path = alt_path
+        storage_image = f"{STORAGE_IMG_PATH}/{image_path}"
+        if os.path.exists(storage_image):
+            print(f"Copying image from storage to scratch...")
+            import shutil
+            shutil.copy(storage_image, image_path)
+            print(f"  Copied: {storage_image} -> {image_path}")
         else:
             print(f"ERROR: Singularity image not found: {image_path}")
+            print(f"       Tried also: {storage_image}")
             return
     
     print(f"Using image: {image_path}")
