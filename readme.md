@@ -6,7 +6,7 @@ qsub -l select=1:ncpus=16:mem=64gb:scratch_local=25gb -l walltime=12:00:00 -- /s
 # set variables
 ```
 export SOURCE_DATA=rudice_sample.laz
-export DATADIR=/storage/plzen1/home/krucek/test_dir
+export DATADIR=/storage/brno2/home/tomea/RCT
 export VOXELIZE=${3:-true}
 export VOXEL_RES=${4:-0.01}
 export ADD_TIME=${5:-true}
