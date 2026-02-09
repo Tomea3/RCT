@@ -1,8 +1,3 @@
-# setup sublime: https://www.geeksforgeeks.org/how-to-use-terminal-in-sublime-text-editor/
-alt + 1
-@
-
-
 ## Example command
 ```
 qsub -l select=1:ncpus=16:mem=64gb:scratch_local=25gb -l walltime=12:00:00 -- /storage/projects2/InterCOST/segment.sh SOURCE_DATA DATADIR VOXELIZE VOXEL_RES ADD_TIME
